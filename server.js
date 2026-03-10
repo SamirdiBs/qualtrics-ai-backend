@@ -18,10 +18,28 @@ app.post("/analyze-email", async (req, res) => {
       return res.status(400).json({ reply: "No email text received." });
     }
 
-    res.json({ reply: "Test response from backend." });
+    const openaiRes = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        input: `You are a cybersecurity assistant. Analyze the following email and say whether it appears phishing or legitimate. Then explain briefly in 3 bullet points.\n\nEmail:\n${emailText}`
+      })
+    });
+
+    const data = await openaiRes.json();
+
+    const reply =
+      data.output_text ||
+      "The AI assistant could not generate an analysis.";
+
+    res.json({ reply });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ reply: "Server error." });
+    res.status(500).json({ reply: "Server error while analyzing email." });
   }
 });
 
