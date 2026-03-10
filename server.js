@@ -1,4 +1,4 @@
-\import express from "express";
+import express from "express";
 import cors from "cors";
 
 const app = express();
@@ -11,12 +11,14 @@ app.get("/", (req, res) => {
 });
 
 function extractResponseText(data) {
-  // First try the convenience field
-  if (data.output_text && typeof data.output_text === "string" && data.output_text.trim()) {
+  if (
+    data.output_text &&
+    typeof data.output_text === "string" &&
+    data.output_text.trim()
+  ) {
     return data.output_text.trim();
   }
 
-  // Then try structured output
   if (Array.isArray(data.output)) {
     const texts = [];
 
@@ -24,7 +26,8 @@ function extractResponseText(data) {
       if (Array.isArray(item.content)) {
         for (const contentItem of item.content) {
           if (
-            (contentItem.type === "output_text" || contentItem.type === "text") &&
+            (contentItem.type === "output_text" ||
+              contentItem.type === "text") &&
             contentItem.text
           ) {
             texts.push(contentItem.text);
@@ -50,18 +53,22 @@ app.post("/analyze-email", async (req, res) => {
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ reply: "OPENAI_API_KEY is missing on Render." });
+      return res
+        .status(500)
+        .json({ reply: "OPENAI_API_KEY is missing on Render." });
     }
 
     const openaiRes = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input: `You are a cybersecurity assistant. Analyze the following email and say whether it appears phishing or legitimate. Then explain briefly in 3 bullet points.\n\nEmail:\n${emailText}`
+        input:
+          "You are a cybersecurity assistant. Analyze the following email and say whether it appears phishing or legitimate. Then explain briefly in 3 bullet points.\n\nEmail:\n" +
+          emailText
       })
     });
 
@@ -70,14 +77,17 @@ app.post("/analyze-email", async (req, res) => {
     if (!openaiRes.ok) {
       console.error("OpenAI API error:", JSON.stringify(data, null, 2));
       return res.status(openaiRes.status).json({
-        reply: `OpenAI API error: ${JSON.stringify(data)}`
+        reply: "OpenAI API error: " + JSON.stringify(data)
       });
     }
 
     const reply = extractResponseText(data);
 
     if (!reply) {
-      console.error("No text extracted from OpenAI response:", JSON.stringify(data, null, 2));
+      console.error(
+        "No text extracted from OpenAI response:",
+        JSON.stringify(data, null, 2)
+      );
       return res.json({
         reply: "OpenAI responded, but no readable text was extracted."
       });
@@ -86,7 +96,7 @@ app.post("/analyze-email", async (req, res) => {
     res.json({ reply });
   } catch (error) {
     console.error("Server crash:", error);
-    res.status(500).json({ reply: `Server crash: ${error.message}` });
+    res.status(500).json({ reply: "Server crash: " + error.message });
   }
 });
 
