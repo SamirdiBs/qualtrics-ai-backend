@@ -46,8 +46,36 @@ function extractResponseText(data) {
 
 app.post("/analyze-email", async (req, res) => {
   try {
-    const { emailText } = req.body;
+    const { emailText, role } = req.body;
+let systemPrompt;
 
+if(role === "specialist"){
+
+systemPrompt = `
+You are SecureMail AI, a cybersecurity expert specializing in phishing detection.
+
+Analyze the email and determine whether it is legitimate or phishing.
+Focus on indicators such as:
+• suspicious sender domain
+• reward or prize scams
+• urgency language
+• mismatched links
+
+Provide a confident technical explanation.
+`;
+
+}
+
+else{
+
+systemPrompt = `
+You are AssistAI, a helpful general AI assistant.
+
+Help the user understand whether the email might be suspicious.
+Explain in simple language without technical cybersecurity terminology.
+`;
+
+}
     if (!emailText) {
       return res.status(400).json({ reply: "No email text received." });
     }
@@ -66,9 +94,7 @@ app.post("/analyze-email", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4.1-mini",
-        input:
-          "You are a cybersecurity assistant. Analyze the following email and say whether it appears phishing or legitimate. Then explain briefly in 3 bullet points.\n\nEmail:\n" +
-          emailText
+        input: systemPrompt + "\n\nEmail:\n" + emailText
       })
     });
 
