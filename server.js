@@ -51,8 +51,9 @@ app.post("/analyze-email", async (req, res) => {
   try {
     const { emailText, role, question } = req.body;
 
-    if (!emailText) {
-      return res.status(400).json({ reply: "No email text received." });
+    // ✅ FIX 1: ALLOW CHAT WITHOUT EMAIL
+    if (!emailText && !question) {
+      return res.status(400).json({ reply: "No input received." });
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -61,42 +62,45 @@ app.post("/analyze-email", async (req, res) => {
         .json({ reply: "OPENAI_API_KEY is missing on server." });
     }
 
-    // --- ROLE-BASED PROMPT (ONLY TONE DIFFERENCE) ---
+    // =========================
+    // ✅ ROLE-BASED PROMPT (ONLY TONE DIFFERENCE)
+    // =========================
     let systemPrompt;
 
     if (role === "specialist") {
       systemPrompt = `
-You are an AI assistant helping analyze emails.
+You are an AI assistant.
 
-Answer the user's question about the email.
+Keep your response strictly within 2 to 3 sentences.
 
-Keep your response strictly within 2 to 3 sentences. Do not exceed this limit.
+If an email is provided, determine whether it is phishing or legitimate and briefly explain why using observable cues (e.g., sender, link, tone, request).
 
-Clearly state whether the email is likely phishing or legitimate and briefly explain why using observable cues (e.g., sender, link, tone, request).
+If no email is provided, answer the user's question normally.
 
-Use a slightly professional and confident tone.
+Use a confident and professional tone.
 `;
     } else {
       systemPrompt = `
-You are an AI assistant helping analyze emails.
+You are an AI assistant.
 
-Answer the user's question about the email.
+Keep your response strictly within 2 to 3 sentences.
 
-Keep your response strictly within 2 to 3 sentences. Do not exceed this limit.
+If an email is provided, explain whether it might be suspicious in simple terms.
 
-Clearly state whether the email is likely phishing or legitimate and briefly explain why using observable cues (e.g., sender, link, tone, request).
+If no email is provided, answer the user's question normally in a clear and friendly way.
 
-Use a simple and neutral tone.
+Use a neutral tone.
 `;
     }
 
-    // --- USER INPUT ---
+    // =========================
+    // ✅ USER INPUT (CONDITIONAL EMAIL)
+    // =========================
     const userPrompt = `
 User Question:
-${question || "Please analyze this email."}
+${question || ""}
 
-Email:
-${emailText}
+${emailText ? "Email:\n" + emailText : ""}
 `;
 
     // --- CALL OPENAI ---
@@ -125,10 +129,7 @@ ${emailText}
     const reply = extractResponseText(data);
 
     if (!reply) {
-      console.error(
-        "No text extracted:",
-        JSON.stringify(data, null, 2)
-      );
+      console.error("No text extracted:", JSON.stringify(data, null, 2));
       return res.json({
         reply: "OpenAI responded, but no readable text was extracted."
       });
