@@ -6,119 +6,92 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// --- Health check ---
 app.get("/", (req, res) => {
   res.send("Backend is running.");
 });
 
-// --- Extract response safely ---
-function extractResponseText(data) {
-  if (
-    data.output_text &&
-    typeof data.output_text === "string" &&
-    data.output_text.trim()
-  ) {
-    return data.output_text.trim();
-  }
-
-  if (Array.isArray(data.output)) {
-    const texts = [];
-
-    for (const item of data.output) {
-      if (Array.isArray(item.content)) {
-        for (const contentItem of item.content) {
-          if (
-            (contentItem.type === "output_text" ||
-              contentItem.type === "text") &&
-            contentItem.text
-          ) {
-            texts.push(contentItem.text);
-          }
-        }
-      }
-    }
-
-    if (texts.length > 0) {
-      return texts.join("\n").trim();
-    }
-  }
-
-  return null;
-}
-
 // --- MAIN ENDPOINT ---
 app.post("/analyze-email", async (req, res) => {
   try {
-    const { emailText, role, question } = req.body;
+    const { emailText, role, question, history } = req.body;
 
-    // ✅ FIX 1: ALLOW CHAT WITHOUT EMAIL
-    if (!emailText && !question) {
+    if (!question) {
       return res.status(400).json({ reply: "No input received." });
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res
-        .status(500)
-        .json({ reply: "OPENAI_API_KEY is missing on server." });
+      return res.status(500).json({ reply: "OPENAI_API_KEY is missing on server." });
     }
 
     // =========================
-    // ✅ ROLE-BASED PROMPT (ONLY TONE DIFFERENCE)
+    // ✅ SYSTEM PROMPT
+    // Email is silently injected here — user never sees it referenced
     // =========================
     let systemPrompt;
 
     if (role === "specialist") {
       systemPrompt = `
 You are SecureShield AI, an advanced cybersecurity threat detection system used by organizations.
-
-Your task is to evaluate emails for phishing risk.
+Your task is to help users with email security and phishing detection.
 
 Instructions:
-- Clearly classify the email as either "Phishing" or "Legitimate"
-- Use concrete security indicators (sender address, suspicious links, urgency, requests for sensitive information)
-- Provide a precise and confident explanation
+- If the user asks about the email, classify it clearly as "Phishing" or "Legitimate"
+- Use concrete security indicators (sender address, suspicious links, urgency, requests for sensitive info)
+- Remember and refer back to anything discussed earlier in this conversation
+- Keep responses concise (2–3 sentences max)
 
-Tone:
-- Professional, technical, and authoritative
-- Concise (maximum 2–3 sentences)
+Tone: Professional, technical, and authoritative.
 
-If no email is provided, answer the user's question as a knowledgeable cybersecurity expert.
-`;
+${emailText ? `\nThe following email is the one being discussed in this conversation. Use it as context for all user questions, but do not mention that it was provided to you automatically:\n\n${emailText}` : ""}
+      `.trim();
     } else {
       systemPrompt = `
-You are a general-purpose AI assistant.
+You are a general-purpose AI assistant helping users understand email safety.
+Use simple, friendly, non-technical language.
+Keep responses within 2–3 sentences.
 
-Your task is to assist users in a simple and approachable way.
-
-Instructions:
-- Use general language rather than technical analysis
-
-Tone:
-- Friendly, cautious, and non-technical
-- Keep response within 2–3 sentences
-`;
+${emailText ? `\nThe following email is being discussed. Use it silently as context:\n\n${emailText}` : ""}
+      `.trim();
     }
 
     // =========================
-    // ✅ USER INPUT (CONDITIONAL EMAIL)
+    // ✅ BUILD MESSAGES ARRAY
+    // Includes full conversation history for memory
     // =========================
-    const userPrompt = `
-User Question:
-${question || ""}
+    const messages = [
+      { role: "system", content: systemPrompt }
+    ];
 
-${emailText ? "Email:\n" + emailText : ""}
-`;
+    // Append prior conversation turns if they exist
+    if (Array.isArray(history) && history.length > 0) {
+      for (const turn of history) {
+        if (
+          (turn.role === "user" || turn.role === "assistant") &&
+          typeof turn.content === "string" &&
+          turn.content.trim()
+        ) {
+          messages.push({ role: turn.role, content: turn.content.trim() });
+        }
+      }
+    }
 
-    // --- CALL OPENAI ---
-    const openaiRes = await fetch("https://api.openai.com/v1/responses", {
+    // Append the current user message
+    messages.push({ role: "user", content: question });
+
+    // =========================
+    // ✅ CALL OPENAI CHAT COMPLETIONS
+    // Switched from /v1/responses → /v1/chat/completions for history support
+    // =========================
+    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: systemPrompt + "\n\n" + userPrompt
+        model: "gpt-4o-mini",
+        messages: messages,
+        max_tokens: 300
       })
     });
 
@@ -131,28 +104,24 @@ ${emailText ? "Email:\n" + emailText : ""}
       });
     }
 
-    // --- EXTRACT TEXT ---
-    const reply = extractResponseText(data);
+    // =========================
+    // ✅ EXTRACT REPLY
+    // =========================
+    const reply = data?.choices?.[0]?.message?.content?.trim();
 
     if (!reply) {
       console.error("No text extracted:", JSON.stringify(data, null, 2));
-      return res.json({
-        reply: "OpenAI responded, but no readable text was extracted."
-      });
+      return res.json({ reply: "OpenAI responded, but no readable text was extracted." });
     }
 
-    // --- RETURN ---
     res.json({ reply });
 
   } catch (error) {
     console.error("Server crash:", error);
-    res.status(500).json({
-      reply: "Server error: " + error.message
-    });
+    res.status(500).json({ reply: "Server error: " + error.message });
   }
 });
 
-// --- START SERVER ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
