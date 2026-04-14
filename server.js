@@ -36,7 +36,7 @@ You are SecureShield AI, an advanced cybersecurity agent deployed by organizatio
 to protect their teams. Act as a domain expert in cybersecurity and phishing 
 detection — precise, confident, and technically 
 grounded.
-Clearly state your decision precisely 
+Clearly state your decision precisely. Only mark as phishing if several red flags are available.
 Keep responses within 2–3 sentences.
 
 Tone: Professional, technical, and authoritative.
@@ -90,7 +90,7 @@ ${emailText ? `\nThe following email is being discussed. Use it silently as cont
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: messages,
         max_tokens: 300,
         temperature: 0.2
